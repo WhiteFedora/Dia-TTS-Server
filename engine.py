@@ -34,14 +34,10 @@ except ImportError as e:
         def __init__(self, *args, **kwargs):
             pass
 
-            def _prepare_cloning_inputs( 
         def from_local(*args, **kwargs):
             raise RuntimeError("Dia model package not available or failed to import.")
 
         def generate(*args, **kwargs):
-            raise RuntimeError("Dia model package not available or failed to import.")
-
-                ) -> Tuple[Optional[str], Optional[str], Optional[str]]:  # (audio_prompt_path, transcript_text, error_message)
             raise RuntimeError("Dia model package not available or failed to import.")
 
         def load_audio(self, *args, **kwargs):
@@ -56,8 +52,10 @@ except ImportError as e:
         def _generate_output(self, *args, **kwargs):
             raise RuntimeError("Dia model package not available or failed to import.")
 
-        # Add dummy _load_dac_model if needed by other parts
         def _load_dac_model(self, *args, **kwargs):
+            raise RuntimeError("Dia model package not available or failed to import.")
+
+        def reset_state(self, *args, **kwargs):
             raise RuntimeError("Dia model package not available or failed to import.")
 
     class DiaConfig:
@@ -640,7 +638,7 @@ def generate_speech(
     top_p: float = 0.95,
     speed_factor: float = 0.94,  # Applied post-generation
     cfg_filter_top_k: int = 35,
-    seed: int = 42,
+    seed: Optional[int] = None,
     split_text: bool = False,
     chunk_size: int = 120,
     # Post-processing parameters (applied after generation)
@@ -721,6 +719,8 @@ def generate_speech(
     logger.info(f"Generating speech (simple method) with params: {log_params}")
 
     # --- Seeding (same as original) ---
+    if seed is None:
+        seed = -1  # Default to random
     if seed >= 0:
         logger.info(f"Using generation seed: {seed}")
         torch.manual_seed(seed)

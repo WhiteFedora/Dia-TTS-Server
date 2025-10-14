@@ -44,3 +44,5 @@ htmlcov/
 
 # Ignore log files
 *.log
+
+*.safetensors

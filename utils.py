@@ -288,132 +288,126 @@ def encode_audio(
 
             # Write the original or resampled audio data
             # Soundfile handles float32 for Opus correctly with format='ogg', subtype='opus'
-            sf.write(
-                output_buffer, audio_to_write, rate_to_write, format="ogg", subtype="opus"
-            )
-            # content_type = "audio/ogg; codecs=opus" # More specific
-            content_type = "audio/opus"  # Match OpenAI response type
+            if output_format == "opus":
+                sf.write(
+                    output_buffer, audio_to_write, rate_to_write, format="ogg", subtype="opus"
+                )
+                # content_type = "audio/ogg; codecs=opus" # More specific
+                content_type = "audio/opus"  # Match OpenAI response type
 
-        elif output_format == "wav":
-            # WAV typically uses int16 for broader compatibility
-            # Ensure clipping doesn't occur if input slightly exceeds [-1, 1]
-            audio_clipped = np.clip(audio_array, -1.0, 1.0)
-            audio_int16 = (audio_clipped * 32767).astype(np.int16)
-            sf.write(
-                output_buffer, audio_int16, sample_rate, format="wav", subtype="pcm_16"
-            )
-            content_type = "audio/wav"
-        else:
-            logger.error(f"Unsupported output format requested: {output_format}")
-            return None
-
-        encoded_bytes = output_buffer.getvalue()
-        end_time = time.time()
-        logger.info(
-            f"Encoded {len(encoded_bytes)} bytes to {output_format} in {end_time - start_time:.3f} seconds."
-        )
-        return encoded_bytes
-
-
-    def time_stretch_audio(audio_array: np.ndarray, speed: float, sample_rate: int) -> np.ndarray:
-        """
-        Time-stretch audio preserving pitch. Prefer librosa.phase_vocoder.
-
-        Args:
-            audio_array: 1-D float32 numpy array samples in [-1,1]
-            speed: speed factor >0 (e.g., 1.1 faster, 0.9 slower)
-            sample_rate: sample rate in Hz
-
-        Returns:
-            stretched audio as float32 numpy array
-        """
-        if audio_array is None or audio_array.size == 0:
-            return audio_array
-
-        # Clip reasonable range
-        speed = max(0.5, min(2.0, float(speed)))
-
-        try:
-            # librosa expects mono 1-D array float32
-            if audio_array.dtype != np.float32:
-                audio = audio_array.astype(np.float32)
+            elif output_format == "wav":
+                # WAV typically uses int16 for broader compatibility
+                # Ensure clipping doesn't occur if input slightly exceeds [-1, 1]
+                audio_clipped = np.clip(audio_array, -1.0, 1.0)
+                audio_int16 = (audio_clipped * 32767).astype(np.int16)
+                sf.write(
+                    output_buffer, audio_int16, sample_rate, format="wav", subtype="pcm_16"
+                )
+                content_type = "audio/wav"
             else:
-                audio = audio_array
+                logger.error(f"Unsupported output format requested: {output_format}")
+                return None
 
-            # If stereo-like (2d), collapse channels to mono by averaging
-            if audio.ndim > 1:
-                audio = np.mean(audio, axis=1) if audio.shape[0] != len(audio) else np.mean(audio, axis=0)
+            encoded_bytes = output_buffer.getvalue()
+            end_time = time.time()
+            logger.info(
+                f"Encoded {len(encoded_bytes)} bytes to {output_format} in {end_time - start_time:.3f} seconds."
+            )
+            return encoded_bytes
 
-            # If speed ~=1.0, return original
-            if abs(speed - 1.0) < 1e-3:
-                return audio.astype(np.float32)
-
-            # Use librosa's phase vocoder via time_stretch
-            # We need to compute STFT, phase-vocode, then ISTFT
-            import librosa as _lib
-            hop_length = 512
-            n_fft = 2048
-            D = _lib.stft(audio, n_fft=n_fft, hop_length=hop_length)
-            D_stretched = _lib.phase_vocoder(D, rate=speed, hop_length=hop_length)
-            y = _lib.istft(D_stretched, hop_length=hop_length)
-            return y.astype(np.float32)
-        except Exception as e:
-            # Fallback: naive resample via linear interpolation (worse quality)
-            try:
-                orig_len = len(audio_array)
-                target_len = int(orig_len / speed)
-                if target_len <= 0:
-                    return audio_array.astype(np.float32)
-                x_original = np.linspace(0, 1, orig_len)
-                x_resampled = np.linspace(0, 1, target_len)
-                resampled_audio_np = np.interp(x_resampled, x_original, audio_array).astype(np.float32)
-                return resampled_audio_np
-            except Exception:
-                return audio_array.astype(np.float32)
-
-
-    def format_prosody_prefix(emotion: Optional[str] = None, rate: Optional[float] = None) -> str:
-        """
-        Convert simple prosody metadata into a textual prefix the Dia model can see.
-        This is a heuristic: the model may or may not respond, but it's a useful, low-risk control.
-
-        Example output: "[EMO=happy][RATE=0.95] "
-        """
-        parts = []
-        if emotion:
-            e = str(emotion).strip().lower()
-            # normalize common labels
-            mapping = {
-                "happy": "happy",
-                "joy": "happy",
-                "sad": "sad",
-                "angry": "angry",
-                "calm": "calm",
-                "neutral": "neutral",
-                "excited": "excited",
-                "surprised": "surprised",
-            }
-            parts.append(f"[EMO={mapping.get(e, e)}]")
-        if rate is not None:
-            try:
-                r = float(rate)
-                parts.append(f"[RATE={r:.2f}]")
-            except Exception:
-                pass
-        if not parts:
-            return ""
-        return "".join(parts) + " "
-
-    except ImportError as ie:
-        # Catch specific import error for soundfile or libsndfile
-        logger.critical(
-            f"`soundfile` or its dependency `libsndfile` not found/installed correctly. Cannot encode audio. Error: {ie}"
-        )
-        return None  # Return None to allow server to handle gracefully
     except Exception as e:
-        # Catch errors during sf.write or other unexpected issues
-        logger.error(f"Error encoding audio to {output_format}: {e}", exc_info=True)
+        logger.error(f"Error during audio encoding: {e}", exc_info=True)
         return None
+
+
+def time_stretch_audio(audio_array: np.ndarray, speed: float, sample_rate: int) -> np.ndarray:
+    """
+    Time-stretch audio preserving pitch. Prefer librosa.phase_vocoder.
+
+    Args:
+        audio_array: 1-D float32 numpy array samples in [-1,1]
+        speed: speed factor >0 (e.g., 1.1 faster, 0.9 slower)
+        sample_rate: sample rate in Hz
+
+    Returns:
+        stretched audio as float32 numpy array
+    """
+    if audio_array is None or audio_array.size == 0:
+        return audio_array
+
+    # Clip reasonable range
+    speed = max(0.5, min(2.0, float(speed)))
+
+    try:
+        # librosa expects mono 1-D array float32
+        if audio_array.dtype != np.float32:
+            audio = audio_array.astype(np.float32)
+        else:
+            audio = audio_array
+
+        # If stereo-like (2d), collapse channels to mono by averaging
+        if audio.ndim > 1:
+            audio = np.mean(audio, axis=1) if audio.shape[0] != len(audio) else np.mean(audio, axis=0)
+
+        # If speed ~=1.0, return original
+        if abs(speed - 1.0) < 1e-3:
+            return audio.astype(np.float32)
+
+        # Use librosa's phase vocoder via time_stretch
+        # We need to compute STFT, phase-vocode, then ISTFT
+        import librosa as _lib
+        hop_length = 512
+        n_fft = 2048
+        D = _lib.stft(audio, n_fft=n_fft, hop_length=hop_length)
+        D_stretched = _lib.phase_vocoder(D, rate=speed, hop_length=hop_length)
+        y = _lib.istft(D_stretched, hop_length=hop_length)
+        return y.astype(np.float32)
+    except Exception as e:
+        # Fallback: naive resample via linear interpolation (worse quality)
+        try:
+            orig_len = len(audio_array)
+            target_len = int(orig_len / speed)
+            if target_len <= 0:
+                return audio_array.astype(np.float32)
+            x_original = np.linspace(0, 1, orig_len)
+            x_resampled = np.linspace(0, 1, target_len)
+            resampled_audio_np = np.interp(x_resampled, x_original, audio_array).astype(np.float32)
+            return resampled_audio_np
+        except Exception:
+            return audio_array.astype(np.float32)
+
+
+def format_prosody_prefix(emotion: Optional[str] = None, rate: Optional[float] = None) -> str:
+    """
+    Convert simple prosody metadata into a textual prefix the Dia model can see.
+    This is a heuristic: the model may or may not respond, but it's a useful, low-risk control.
+
+    Example output: "[EMO=happy][RATE=0.95] "
+    """
+    parts = []
+    if emotion:
+        e = str(emotion).strip().lower()
+        # normalize common labels
+        mapping = {
+            "happy": "happy",
+            "joy": "happy",
+            "sad": "sad",
+            "angry": "angry",
+            "calm": "calm",
+            "neutral": "neutral",
+            "excited": "excited",
+            "surprised": "surprised",
+        }
+        parts.append(f"[EMO={mapping.get(e, e)}]")
+    if rate is not None:
+        try:
+            r = float(rate)
+            parts.append(f"[RATE={r:.2f}]")
+        except Exception:
+            pass
+    if not parts:
+        return ""
+    return "".join(parts) + " "
 
 def save_audio_to_file(
     audio_array: np.ndarray, sample_rate: int, file_path: str
