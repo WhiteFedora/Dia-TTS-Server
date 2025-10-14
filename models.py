@@ -3,6 +3,7 @@
 
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
+from typing import List
 
 # --- Request Models ---
 
@@ -41,6 +42,11 @@ class CustomTTSRequest(BaseModel):
     text: str = Field(
         ...,
         description="The text to synthesize. For 'dialogue' mode, include [S1]/[S2] tags.",
+    )
+    # New: allow an explicit sequence of turns for multi-speaker scripts
+    turns: Optional[List[dict]] = Field(
+        default=None,
+        description="Optional list of turns for scripted multi-speaker generation. Each turn is an object like {\"speaker\": 'S1', \"text\": '...', \"emotion\": 'calm', \"rate\": 1.0, \"pause_after\": 0.4 }.",
     )
     voice_mode: Literal["dialogue", "single_s1", "single_s2", "clone"] = Field(
         default="single_s1", description="Specifies the generation mode."

@@ -605,6 +605,7 @@ async def custom_tts_endpoint(request: CustomTTSRequest):
             voice_mode=voice_mode_for_engine,  # Use potentially adjusted mode
             clone_reference_filename=reference_file_for_engine,  # Pass full path or None
             transcript=request.transcript,  # Pass the optional transcript
+            turns=request.turns,
             max_tokens=request.max_tokens,
             cfg_scale=request.cfg_scale,
             temperature=request.temperature,

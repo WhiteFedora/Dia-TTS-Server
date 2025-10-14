@@ -34,14 +34,14 @@ except ImportError as e:
         def __init__(self, *args, **kwargs):
             pass
 
-        @staticmethod
+            def _prepare_cloning_inputs( 
         def from_local(*args, **kwargs):
             raise RuntimeError("Dia model package not available or failed to import.")
 
         def generate(*args, **kwargs):
             raise RuntimeError("Dia model package not available or failed to import.")
 
-        def _prepare_text_input(self, *args, **kwargs):
+                ) -> Tuple[Optional[str], Optional[str], Optional[str]]:  # (audio_prompt_path, transcript_text, error_message)
             raise RuntimeError("Dia model package not available or failed to import.")
 
         def load_audio(self, *args, **kwargs):
@@ -101,6 +101,8 @@ from utils import (
     fix_internal_silence,
     remove_long_unvoiced_segments,
     _generate_transcript_with_whisper,  # Import Whisper helper
+    time_stretch_audio,
+    format_prosody_prefix,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,27 +119,13 @@ EXPECTED_SAMPLE_RATE = DEFAULT_SAMPLE_RATE
 
 
 def get_device() -> torch.device:
-    """Determines the optimal torch device (CUDA > MPS > CPU)."""
-    if torch.cuda.is_available():
-        logger.info("CUDA is available, using GPU.")
-        torch.cuda.empty_cache()
-        return torch.device("cuda")
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        # MPS support check might need refinement based on PyTorch version
-        try:
-            # Simple check if MPS device can be created and used
-            test_tensor = torch.tensor([1.0]).to("mps")
-            if test_tensor.device.type == "mps":
-                logger.info("MPS is available, using Apple Silicon GPU.")
-                return torch.device("mps")
-            else:
-                raise RuntimeError("MPS device creation failed.")
-        except Exception as e:
-            logger.info(f"MPS not fully available ({e}), falling back to CPU.")
-            return torch.device("cpu")
-    else:
-        logger.info("CUDA and MPS not available, using CPU.")
-        return torch.device("cpu")
+    """Determines the optimal torch device for this application.
+
+    Per project requirement: prioritize CPU-only usage (laptop with no GPU).
+    This enforces CPU device selection even if CUDA/MPS is available.
+    """
+    logger.info("Forcing CPU device selection (CPU-only target environment).")
+    return torch.device("cpu")
 
 
 def get_compute_dtype(device: torch.device, weights_filename: str) -> str:
@@ -397,7 +385,7 @@ def _prepare_cloning_inputs(
     whisper_model_name: str,
     whisper_cache_path: str,
     transcript: Optional[str] = None,
-) -> Tuple[Optional[str], Optional[str]]:  # MODIFIED return type
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:  # (audio_prompt_tensor, transcript_text, error_message)
     """
     Prepares inputs for voice cloning: loads/processes audio, gets transcript.
 
@@ -554,8 +542,8 @@ def _prepare_cloning_inputs(
     if transcript_text is None:
         # Free resources before returning
         del processed_audio_np
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        # Ensure CPU-only cleanup
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
         return None, None, error_message or "Failed to obtain reference transcript."
 
     # Free resources before returning
@@ -643,6 +631,7 @@ def generate_speech(
     voice_mode: str = "single_s1",
     clone_reference_filename: Optional[str] = None,
     transcript: Optional[str] = None,  # Explicit transcript for cloning prep
+    turns: Optional[List[Dict[str, Any]]] = None,  # Optional scripted turns
     max_tokens: Optional[
         int
     ] = None,  # Kept for signature compatibility, may not be used by model.generate
@@ -686,10 +675,32 @@ def generate_speech(
     monitor = PerformanceMonitor()
     monitor.record("Request received in engine (simple generate)")
 
-    # Basic split_text logic (same as original)
-    if split_text:
-        if len(text_to_process) < chunk_size * 2:
-            split_text = False
+    # If explicit turns/script provided, build chunks from turns
+    per_chunk_rates: List[float] = []
+    per_chunk_emotions: List[Optional[str]] = []
+    if turns:
+        text_chunks = []
+        for t in turns:
+            speaker = t.get("speaker") or t.get("tag") or "S1"
+            # Ensure bracketed speaker tag
+            if not (speaker.startswith("[") and speaker.endswith("]")):
+                speaker_tag = f"[{speaker}]"
+            else:
+                speaker_tag = speaker
+            ttext = t.get("text", "")
+            emotion = t.get("emotion")
+            rate = t.get("rate", speed_factor if speed_factor is not None else 1.0)
+            prefix = format_prosody_prefix(emotion=emotion, rate=rate)
+            chunk_text = f"{speaker_tag} {prefix}{ttext}"
+            text_chunks.append(chunk_text)
+            per_chunk_rates.append(float(rate))
+            per_chunk_emotions.append(emotion)
+        split_text = False
+    else:
+        # Basic split_text logic (same as original)
+        if split_text:
+            if len(text_to_process) < chunk_size * 2:
+                split_text = False
 
     # Logging (same as original)
     log_params = {
@@ -876,6 +887,13 @@ def generate_speech(
                 monitor.record(f"model.generate completed for chunk {i+1}")
 
                 if chunk_output_np is not None and chunk_output_np.size > 0:
+                    # Apply per-chunk rate/time-stretch if provided
+                    this_rate = per_chunk_rates[i] if (len(per_chunk_rates) > i) else speed_factor
+                    try:
+                        if this_rate != 1.0:
+                            chunk_output_np = time_stretch_audio(chunk_output_np, this_rate, EXPECTED_SAMPLE_RATE)
+                    except Exception as e:
+                        logger.warning(f"Time-stretch failed for chunk {i+1}: {e}")
                     all_audio_arrays.append(chunk_output_np)
                     chunk_duration = time.time() - chunk_start_time
                     logger.info(
