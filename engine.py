@@ -819,26 +819,16 @@ def generate_speech(
         f"Starting generation loop for {total_chunks} chunks using model.generate() per chunk."
     )
 
-    # Progress bar setup (optional, similar to original)
-    show_outer_pbar = total_chunks > 1
-    outer_pbar = None
-    if show_outer_pbar:
-        outer_pbar = tqdm(
-            total=total_chunks,
-            desc="Processing Chunks (Simple)",
-            unit="chunk",
-            position=0,
-            leave=True,
-        )  # Leave bar after completion
+    # Progress logging setup (verbose)
+    chunk_progress_count = 0
+    logger.info(f"Engine: Starting chunk processing for {total_chunks} chunks")
 
     try:
         for i, chunk in enumerate(text_chunks):
             chunk_start_time = time.time()
-            if outer_pbar:
-                outer_pbar.set_description(f"Chunk {i+1}/{total_chunks} (Simple)")
-
+            chunk_progress_count += 1
             logger.info(
-                f"Processing chunk {i+1}/{total_chunks} with model.generate()..."
+                f"Engine: Processing chunk {chunk_progress_count}/{total_chunks} - length {len(chunk)} chars, remaining {total_chunks - chunk_progress_count} chunks, elapsed {time.time() - monitor.events[0][1]:.1f}s"
             )
 
             # Determine inputs for model.generate based on mode
@@ -921,8 +911,8 @@ def generate_speech(
                 # For robustness, let's skip and continue, but log the error.
                 # raise # Or re-raise to stop the whole process
 
-            if outer_pbar:
-                outer_pbar.update(1)
+                # Progress logging per chunk end
+                logger.info(f"Engine: Completed chunk {chunk_progress_count}/{total_chunks}")
 
         # --- End of chunk loop ---
         if outer_pbar:

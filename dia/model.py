@@ -292,9 +292,19 @@ class Dia:
 
         if verbose:
             print("generate: data loaded")
+            print(f"generate: text tokens shape: {enc_input_cond.shape}")
+            print(f"generate: audio prompt prefill step: {prefill_step}")
 
+        print("generate: initializing encoder state...")
+        start_time = time.time()
         enc_state = EncoderInferenceState.new(self.config, enc_input_cond)
+        encoder_init_time = time.time() - start_time
+        print(f"generate: encoder state initialized in {encoder_init_time:.3f}s")
+        print("generate: running encoder forward pass...")
+        start_time = time.time()
         encoder_out = self.model.encoder(enc_input, enc_state)
+        encoder_fwd_time = time.time() - start_time
+        print(f"generate: encoder forward completed in {encoder_fwd_time:.3f}s, output shape: {encoder_out.shape}")
 
         # Clean up inputs after encoding
         del enc_input_uncond, enc_input
@@ -475,7 +485,8 @@ class Dia:
             audio_prompt = audio_prompt_path
         if use_cfg_filter is not None:
             print("Warning: use_cfg_filter is deprecated.")
-
+        if verbose:
+            print("generate: processing input data and loading model components...")
         # Create generator from seed if provided
         generator = None
         if seed >= 0:
@@ -489,6 +500,7 @@ class Dia:
 
         if verbose:
             total_start_time = time.time()
+            print(f"generate: text_to_generate_size estimated at {text_to_generate_size} characters")
 
         # Prepare generation states
         dec_state, dec_output = self._prepare_generation(text, audio_prompt, verbose)
@@ -514,7 +526,7 @@ class Dia:
         token_history = []  # Track generated tokens
 
         try:
-            while dec_step < max_tokens:
+            for dec_step in range(dec_step, max_tokens):
                 dec_state.prepare_step(dec_step)
                 tokens_Bx1xC = (
                     dec_output.get_tokens_at(dec_step).unsqueeze(0).expand(2, -1, -1)
@@ -555,12 +567,15 @@ class Dia:
                 if eos_countdown == 0:
                     break
 
-                dec_step += 1
-
-                if verbose and dec_step % 86 == 0:
+                if verbose and (dec_step + 1) % 86 == 0:
                     duration = time.time() - start_time
+                    total_elapsed = time.time() - total_start_time
+                    tokens_generated = dec_step - dec_output.prefill_step + 1
+                    tokens_remaining = min(estimated_tokens - tokens_generated, max_tokens - dec_step - 1)
+                    est_remaining_time = tokens_remaining / (tokens_generated / total_elapsed) if tokens_generated > 0 else 0
+                    progress_percent = (tokens_generated / estimated_tokens) * 100 if estimated_tokens > 0 else 0
                     print(
-                        f"generate step {dec_step}: speed={86 / duration:.3f} tokens/s, realtime factor={1 / duration:.3f}x"
+                        f"generate step {dec_step + 1}: speed={86 / duration:.3f} tokens/s, realtime factor={1 / duration:.3f}x, progress={progress_percent:.1f}%, est_remaining={est_remaining_time:.1f}s, total_elapsed={total_elapsed:.1f}s"
                     )
                     start_time = time.time()
 
@@ -614,7 +629,7 @@ class Dia:
                         total_step = dec_step + 1 - dec_output.prefill_step
                         total_duration = time.time() - total_start_time
                         print(
-                            f"generate: total step={total_step}, total duration={total_duration:.3f}s"
+                            f"generate: generation complete, total steps={total_step}, total time={total_duration:.3f}s, rate={total_step/total_duration:.2f} tokens/s"
                         )
 
                 # Process output
