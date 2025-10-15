@@ -1,42 +1,33 @@
 # server.py
 # Main FastAPI server for Dia TTS
 
-import sys
 import logging
 import time
 import os
 import io
-import uuid
-import shutil
 import yaml  # Keep yaml import for potential future use, though config handles it now
 from datetime import datetime
 from contextlib import asynccontextmanager
-from typing import Optional, Literal, List, Dict, Any
+from typing import Optional, Literal, List
 import webbrowser
 import threading
-import time
 
 from fastapi import (
     FastAPI,
     HTTPException,
     Request,
-    Response,
     Form,
     UploadFile,
     File,
-    BackgroundTasks,
-    Depends,  # Added Depends for potential future use
 )
 from fastapi.responses import (
     StreamingResponse,
     JSONResponse,
     HTMLResponse,
-    RedirectResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
-import numpy as np
 
 # Internal imports
 from config import (
@@ -48,16 +39,13 @@ from config import (
     get_model_cache_path,
     get_predefined_voices_path,
     get_model_repo_id,
-    get_model_config_filename,
     get_model_weights_filename,
     get_whisper_model_name,
     # Generation default getters (still useful for API defaults)
-    get_gen_default_speed_factor,
     get_gen_default_cfg_scale,
     get_gen_default_temperature,
     get_gen_default_top_p,
     get_gen_default_cfg_filter_top_k,
-    get_gen_default_seed,
     get_gen_default_split_text,
     get_gen_default_chunk_size,
     CONFIG_FILE_PATH,
@@ -111,7 +99,6 @@ startup_complete_event = threading.Event()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup/shutdown."""
-    model_loaded_successfully = False
     try:
         logger.info("Starting Dia TTS server initialization...")
         # Config is loaded automatically by config_manager instance creation
@@ -135,7 +122,6 @@ async def lifespan(app: FastAPI):
             # Allow server to start but log critical error. Endpoints will fail later.
         else:
             logger.info("Dia model loaded successfully.")
-            model_loaded_successfully = True
 
             # Create and start a delayed browser opening thread only if model loaded
             host = get_host()

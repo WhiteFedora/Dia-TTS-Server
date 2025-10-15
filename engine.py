@@ -9,7 +9,8 @@ import torchaudio  # Import torchaudio for loading/processing
 import numpy as np
 from typing import Optional, Tuple, List, Dict, Any  # Added Dict, Any
 from huggingface_hub import hf_hub_download
-from tqdm import tqdm  # Import tqdm for progress bars
+# tqdm imported for potential future progress bars, not currently used directly
+
 
 # Import Dia model class and config from the NEW dia library structure
 try:
@@ -87,19 +88,18 @@ from config import (
     get_reference_audio_path,
     get_model_config_filename,
     get_model_weights_filename,
-    get_gen_default_seed,  # Import seed getter
     get_whisper_model_name,  # Import Whisper config getter
 )
 
-    # Import text splitting utility and other helpers
+# Import text splitting utility and other helpers
 from utils import (
     chunk_text_by_sentences,
     PerformanceMonitor,
     trim_lead_trail_silence,
     fix_internal_silence,
-    remove_long_unvoiced_segments,
+    # remove_long_unvoiced_segments is imported but not currently used
+    # time_stretch_audio is imported but not currently used
     _generate_transcript_with_whisper,  # Import Whisper helper
-    time_stretch_audio,
     format_prosody_prefix,
     insert_pauses_into_audio,
 )
@@ -469,12 +469,13 @@ def _prepare_cloning_inputs(
     # --- 2. Get Transcript ---
     transcript_text: Optional[str] = None
     error_message: Optional[str] = None
-    transcript_source: str = "unknown"
+    # transcript_source tracked but not currently used in return value
+
 
     if transcript is not None:
         logger.info("Using provided transcript override for cloning.")
         transcript_text = transcript.strip()
-        transcript_source = "explicit"
+        # transcript_source = "explicit"  # Tracked but not currently used
         # Check and prepend [S1] or [S2] if needed (assuming clone target is usually S1)
         if not transcript_text.startswith(("[S1]", "[S2]")):
             logger.debug("Prepending '[S1] ' to explicit transcript.")
@@ -494,7 +495,7 @@ def _prepare_cloning_inputs(
                 with open(transcript_filepath, "r", encoding="utf-8") as f:
                     transcript_text = f.read().strip()
                 logger.info(f"Loaded transcript from local file: {transcript_filepath}")
-                transcript_source = "file"
+                # transcript_source = "file"  # Tracked but not currently used
                 # Assume file is correctly formatted (includes speaker tags)
                 # Ensure tag exists just in case file is malformed
                 if not transcript_text.startswith(("[S1]", "[S2]")):
@@ -520,7 +521,7 @@ def _prepare_cloning_inputs(
 
             if generated_transcript is not None:
                 transcript_text = "[S1] " + generated_transcript.strip()  # Prepend [S1]
-                transcript_source = "whisper"
+                # transcript_source = "whisper"  # Tracked but not currently used
                 logger.info("Whisper transcription successful.")
                 # Save the generated transcript
                 try:
@@ -535,7 +536,7 @@ def _prepare_cloning_inputs(
             else:
                 logger.error("Whisper transcription failed.")
                 error_message = "Reference transcript file not found and automatic transcription failed."
-                transcript_source = "failed"
+                # transcript_source = "failed"  # Tracked but not currently used
 
     # --- 3. Check if Transcript was Obtained ---
     if transcript_text is None:
