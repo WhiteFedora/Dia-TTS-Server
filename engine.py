@@ -91,7 +91,7 @@ from config import (
     get_whisper_model_name,  # Import Whisper config getter
 )
 
-# Import text splitting utility and other helpers
+    # Import text splitting utility and other helpers
 from utils import (
     chunk_text_by_sentences,
     PerformanceMonitor,
@@ -101,6 +101,7 @@ from utils import (
     _generate_transcript_with_whisper,  # Import Whisper helper
     time_stretch_audio,
     format_prosody_prefix,
+    insert_pauses_into_audio,
 )
 
 logger = logging.getLogger(__name__)
@@ -903,6 +904,10 @@ def generate_speech(
                     if hasattr(dia_model, "reset_state"):
                         dia_model.reset_state()
 
+            except Exception as chunk_error:
+                logger.error(f"Error generating chunk {i+1}: {chunk_error}")
+                continue
+
         # --- End of chunk loop ---
 
         # --- Concatenate Audio Chunks ---
@@ -925,8 +930,9 @@ def generate_speech(
         monitor.record("Paused-based post-processing started")
 
         # --- Apply Pause Insertion ---
-        final_audio_np = insert_pauses_into_audio(final_audio_np, markers, EXPECTED_SAMPLE_RATE)
-        monitor.record("Paused-based post-processing complete")
+        if final_audio_np is not None:
+            final_audio_np = insert_pauses_into_audio(final_audio_np, markers, EXPECTED_SAMPLE_RATE)
+            monitor.record("Paused-based post-processing complete")
 
     except Exception as e:
         logger.error(f"Error during simplified generation loop: {e}", exc_info=True)
