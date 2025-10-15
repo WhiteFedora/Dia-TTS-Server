@@ -256,8 +256,8 @@ def load_model():
     )  # Determine compute dtype
 
     logger.info("Attempting to load Dia model:")
-    logger.info("  Repo ID: %s", repo_id)
-    logger.info("  Config File: %s", config_filename)
+    logger.info(f"  Repo ID: {repo_id}")
+    logger.info(f"  Config File: {config_filename}")
     logger.info(f"  Weights File: {weights_filename}")
     logger.info(f"  Cache Directory: {cache_path}")
     logger.info(f"  Target Device: {model_device}")
@@ -312,7 +312,7 @@ def load_model():
 
         # Load weights manually based on file type
         # Load to CPU first to potentially reduce GPU VRAM spike during loading
-        logger.info("Loading weights from: {0} to CPU RAM first...".format(local_weights_path))
+        logger.info(f"Loading weights from: {local_weights_path} to CPU RAM first...")
         map_location = torch.device("cpu")  # Load to CPU
         if local_weights_path.endswith(".safetensors"):
             from safetensors.torch import load_file
