@@ -255,9 +255,9 @@ def load_model():
         model_device, weights_filename
     )  # Determine compute dtype
 
-    logger.info(f"Attempting to load Dia model:")
-    logger.info(f"  Repo ID: {repo_id}")
-    logger.info(f"  Config File: {config_filename}")
+    logger.info("Attempting to load Dia model:")
+    logger.info("  Repo ID: %s", repo_id)
+    logger.info("  Config File: %s", config_filename)
     logger.info(f"  Weights File: {weights_filename}")
     logger.info(f"  Cache Directory: {cache_path}")
     logger.info(f"  Target Device: {model_device}")
@@ -312,7 +312,7 @@ def load_model():
 
         # Load weights manually based on file type
         # Load to CPU first to potentially reduce GPU VRAM spike during loading
-        logger.info(f"Loading weights from: {local_weights_path} to CPU RAM first...")
+        logger.info("Loading weights from: {0} to CPU RAM first...".format(local_weights_path))
         map_location = torch.device("cpu")  # Load to CPU
         if local_weights_path.endswith(".safetensors"):
             from safetensors.torch import load_file
@@ -384,7 +384,7 @@ def _prepare_cloning_inputs(
     whisper_model_name: str,
     whisper_cache_path: str,
     transcript: Optional[str] = None,
-) -> Tuple[Optional[str], Optional[str], Optional[str]]:  # (audio_prompt_tensor, transcript_text, error_message)
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Prepares inputs for voice cloning: loads/processes audio, gets transcript.
 
@@ -400,8 +400,7 @@ def _prepare_cloning_inputs(
         Tuple of (audio_prompt_tensor, reference_transcript_text, error_message).
         On success, error_message is None. On failure, text and tensor are None.
     """
-    global dia_model  # Need access to the loaded Dia model for DAC
-
+    # Need access to the loaded Dia model for DAC
     reference_audio_path = os.path.join(
         reference_audio_base_path, clone_reference_filename
     )
@@ -470,7 +469,6 @@ def _prepare_cloning_inputs(
     transcript_text: Optional[str] = None
     error_message: Optional[str] = None
     # transcript_source tracked but not currently used in return value
-
 
     if transcript is not None:
         logger.info("Using provided transcript override for cloning.")
@@ -659,8 +657,7 @@ def generate_speech(
     Returns:
         Tuple of (numpy_audio_array, sample_rate), or None on failure.
     """
-    global dia_model  # Use the preloaded model instance
-
+    # Use the preloaded model instance
     if not MODEL_LOADED or dia_model is None or not model_device:
         logger.error("Dia model is not loaded. Cannot generate speech.")
         return None

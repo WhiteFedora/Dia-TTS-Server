@@ -209,7 +209,6 @@ def encode_audio(
     start_time = time.time()
     output_buffer = io.BytesIO()
 
-
     try:
         if output_format == "opus":
             # Define Opus supported rates and a target rate for resampling
@@ -275,7 +274,6 @@ def encode_audio(
                         # Cannot safely handle this shape
                         raise ValueError(f"Cannot handle audio shape {audio_array.shape} for resampling")
 
-
                     rate_to_write = TARGET_OPUS_RATE
                     logger.info(f"Resampling successful to {rate_to_write}Hz.")
 
@@ -302,7 +300,6 @@ def encode_audio(
                 sf.write(
                     output_buffer, audio_to_write, rate_to_write, format="ogg", subtype="opus"
                 )
-                # content_type = "audio/opus"  # Not currently used in this function
 
             elif output_format == "wav":
                 # WAV typically uses int16 for broader compatibility
@@ -312,7 +309,6 @@ def encode_audio(
                 sf.write(
                     output_buffer, audio_int16, sample_rate, format="wav", subtype="pcm_16"
                 )
-                content_type = "audio/wav"
             else:
                 logger.error(f"Unsupported output format requested: {output_format}")
                 return None
@@ -390,7 +386,6 @@ def time_stretch_audio(audio_array: np.ndarray, speed: float, sample_rate: int) 
 markers = []
 
 
-
 def parse_scripting_markers(text: str) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Parse script markers like "(pause)", "(pause=0.1)", "..." and speed controls.
@@ -440,9 +435,11 @@ def parse_scripting_markers(text: str) -> Tuple[str, List[Dict[str, Any]]]:
     def _slow_marker(match):
         markers.append({"type": "speed", "value": 0.8, "position": match.start()})
         return ""
+
     def _fast_marker(match):
         markers.append({"type": "speed", "value": 1.3, "position": match.start()})
         return ""
+
     text = re.sub(r'\[SLOW\]', _slow_marker, text, flags=re.IGNORECASE)
     text = re.sub(r'\[FAST\]', _fast_marker, text, flags=re.IGNORECASE)
 
@@ -492,6 +489,7 @@ def format_prosody_prefix(emotion: Optional[str] = None, rate: Optional[float] =
     if not parts:
         return ""
     return "".join(parts) + " "
+
 
 def save_audio_to_file(
     audio_array: np.ndarray, sample_rate: int, file_path: str
