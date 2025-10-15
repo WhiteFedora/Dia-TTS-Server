@@ -3,7 +3,6 @@
 
 import sys
 import logging
-import time
 import os
 import io
 import uuid
@@ -12,9 +11,7 @@ import yaml  # Keep yaml import for potential future use, though config handles 
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional, Literal, List, Dict, Any
-import webbrowser
 import threading
-import time
 
 from fastapi import (
     FastAPI,
@@ -137,14 +134,6 @@ async def lifespan(app: FastAPI):
             logger.info("Dia model loaded successfully.")
             model_loaded_successfully = True
 
-            # Create and start a delayed browser opening thread only if model loaded
-            host = get_host()
-            port = get_port()
-            browser_thread = threading.Thread(
-                target=lambda: _delayed_browser_open(host, port), daemon=True
-            )
-            browser_thread.start()
-
         logger.info("Application startup sequence finished. Signaling readiness.")
         startup_complete_event.set()
 
@@ -157,24 +146,6 @@ async def lifespan(app: FastAPI):
         logger.info("Application shutdown initiated...")
         # Add any specific cleanup needed
         logger.info("Application shutdown complete.")
-
-
-def _delayed_browser_open(host, port):
-    """Opens browser after a short delay to ensure server is ready"""
-    try:
-        startup_complete_event.wait(timeout=300)
-        if not startup_complete_event.is_set():
-            logger.warning(
-                "Startup did not complete within timeout. Browser will not be opened automatically."
-            )
-            return
-        time.sleep(2)
-        display_host = "localhost" if host == "0.0.0.0" else host
-        browser_url = f"http://{display_host}:{port}/"
-        logger.info(f"Attempting to open browser at {browser_url}")
-        webbrowser.open(browser_url)
-    except Exception as e:
-        logger.error(f"Failed to open browser automatically: {e}", exc_info=True)
 
 
 # --- FastAPI App Initialization ---
