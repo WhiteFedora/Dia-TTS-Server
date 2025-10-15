@@ -377,6 +377,79 @@ def time_stretch_audio(audio_array: np.ndarray, speed: float, sample_rate: int) 
             return audio_array.astype(np.float32)
 
 
+# Global markers list for regex replacements
+markers = []
+
+def parse_scripting_markers(text: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Parse script markers like "(pause)", "(pause=0.1)", "..." and speed controls.
+    Returns cleaned text and list of marker metadata.
+
+    Args:
+        text: Input text with scripting markers
+
+    Returns:
+        Tuple of (cleaned_text, markers_list)
+        markers_list = [{"type": "pause", "duration": 0.3, "position": 45}, ...]
+    """
+    # Reset global markers list for each parse
+    global markers
+    markers = []
+
+    # Handle ellipsis (...) - thoughtful pause
+    def _add_ellipsis_pause(match):
+        markers.append({"type": "pause", "duration": 0.4, "position": match.start()})
+        return " "
+    text = re.sub(r'\.{3,}', _add_ellipsis_pause, text)
+
+    # Handle em-dashes (— or --) - dramatic pause
+    def _add_dramatic_pause(match):
+        markers.append({"type": "pause", "duration": 0.8, "position": match.start()})
+        return " "
+    text = re.sub(r'(—|--)', _add_dramatic_pause, text)
+
+    # Handle explicit pause markers (pause=0.1) or (pause)
+    def _pause_replacer(match):
+        duration_str = match.group(1)
+        duration = float(duration_str) if duration_str else 0.3
+        markers.append({"type": "pause", "duration": duration, "position": match.start()})
+        return " "  # Replace with space
+    pause_pattern = r'\(pause(?:=(\d*\.?\d+))?\)'
+    text = re.sub(pause_pattern, _pause_replacer, text, flags=re.IGNORECASE)
+
+    # Handle speed modifiers [SPEED=1.2] [SLOW] [FAST]
+    def _speed_replacer(match):
+        speed = float(match.group(1))
+        markers.append({"type": "speed", "value": speed, "position": match.start()})
+        return ""
+    speed_pattern = r'\[SPEED=(\d*\.?\d+)\]'
+    text = re.sub(speed_pattern, _speed_replacer, text, flags=re.IGNORECASE)
+
+    # Handle relative speed [SLOW] [FAST]
+    def _slow_marker(match):
+        markers.append({"type": "speed", "value": 0.8, "position": match.start()})
+        return ""
+    def _fast_marker(match):
+        markers.append({"type": "speed", "value": 1.3, "position": match.start()})
+        return ""
+    text = re.sub(r'\[SLOW\]', _slow_marker, text, flags=re.IGNORECASE)
+    text = re.sub(r'\[FAST\]', _fast_marker, text, flags=re.IGNORECASE)
+
+    return text.strip(), markers
+
+
+def _add_pause_marker(match, pause_type: str, default_duration: float):
+    """Helper to add pause marker when replacing pause patterns."""
+    markers.append({"type": "pause", "duration": default_duration, "position": match.start()})
+    return " "
+
+
+def _add_speed_marker(match, speed_type: str, speed_value: float):
+    """Helper to add speed marker when replacing speed patterns."""
+    markers.append({"type": "speed", "value": speed_value, "position": match.start()})
+    return ""
+
+
 def format_prosody_prefix(emotion: Optional[str] = None, rate: Optional[float] = None) -> str:
     """
     Convert simple prosody metadata into a textual prefix the Dia model can see.

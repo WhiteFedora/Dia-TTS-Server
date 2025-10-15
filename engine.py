@@ -673,6 +673,11 @@ def generate_speech(
     monitor = PerformanceMonitor()
     monitor.record("Request received in engine (simple generate)")
 
+    # Parse scripting markers from the input text
+    from utils import parse_scripting_markers
+    cleaned_text, markers = parse_scripting_markers(text_to_process)
+    logger.info(f"Parsed {len(markers)} markers: {[str(m) for m in markers]}")
+
     # If explicit turns/script provided, build chunks from turns
     per_chunk_rates: List[float] = []
     per_chunk_emotions: List[Optional[str]] = []
@@ -694,10 +699,14 @@ def generate_speech(
             per_chunk_rates.append(float(rate))
             per_chunk_emotions.append(emotion)
         split_text = False
+        # Use cleaned_text instead of original for chunking if no turns
+        text_to_chunk = cleaned_text
     else:
+        # Use cleaned text for processing
+        text_to_chunk = cleaned_text
         # Basic split_text logic (same as original)
         if split_text:
-            if len(text_to_process) < chunk_size * 2:
+            if len(text_to_chunk) < chunk_size * 2:
                 split_text = False
 
     # Logging (same as original)
@@ -798,13 +807,19 @@ def generate_speech(
         logger.info(
             f"Splitting text into sentence-based chunks (max aggregation size: {chunk_size})..."
         )
-        text_chunks = chunk_text_by_sentences(text_to_process, chunk_size)
+        text_chunks = chunk_text_by_sentences(text_to_chunk, chunk_size)
         # ... (handle empty chunking result - same as original) ...
         logger.info(f"Split text into {len(text_chunks)} chunks.")
     else:
         logger.info("Text splitting disabled. Processing text as a single chunk.")
-        if text_to_process.strip():
-            text_chunks.append(text_to_process)
+        if text_to_chunk.strip():
+            text_chunks.append(text_to_chunk)
+
+    # Apply speed/pause markers to generation if any were found
+    # For now, log the markers - future implementation will handle them in generation
+    if markers:
+        logger.info(f"Found scripting markers: {markers}")
+        # For final solution, markers would be processed here to modify generation parameters per chunk
 
     if not text_chunks:
         logger.warning("No text chunks to process after splitting.")
@@ -915,8 +930,6 @@ def generate_speech(
                 logger.info(f"Engine: Completed chunk {chunk_progress_count}/{total_chunks}")
 
         # --- End of chunk loop ---
-        if outer_pbar:
-            outer_pbar.close()
 
         # --- Concatenate Audio Chunks ---
         if not all_audio_arrays:
@@ -936,8 +949,6 @@ def generate_speech(
             torch.cuda.empty_cache()  # Clear CUDA cache
 
     except Exception as e:
-        if outer_pbar and not outer_pbar.disable:
-            outer_pbar.close()
         logger.error(f"Error during simplified generation loop: {e}", exc_info=True)
         logger.debug(monitor.report())
         final_audio_np = None  # Indicate failure
