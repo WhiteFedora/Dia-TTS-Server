@@ -1169,6 +1169,80 @@ def get_predefined_voices() -> List[Dict[str, str]]:
 # --- Other Utilities ---
 
 
+def insert_pauses_into_audio(audio_array: np.ndarray, markers: List[Dict[str, Any]], sample_rate: int, expected_total_tokens: int = None) -> np.ndarray:
+    """
+    Insert pauses into generated audio based on marker positions.
+
+    This function analyzes pause markers and estimates their timing based on text-to-audio ratio,
+    then inserts silence at those positions.
+
+    Args:
+        audio_array: Generated audio as numpy array
+        markers: List of pause markers [{"type": "pause", "duration": 0.3, "position": 45}, ...]
+        sample_rate: Audio sample rate
+        expected_total_tokens: Estimated total tokens (optional)
+
+    Returns:
+        Audio with pauses inserted
+    """
+    if not audio_array.size or not markers:
+        return audio_array
+
+    # Filter for pause markers only
+    pause_markers = [m for m in markers if m["type"] == "pause"]
+    if not pause_markers:
+        return audio_array
+
+    logger.info(f"Inserting {len(pause_markers)} pauses into generated audio")
+
+    try:
+        # Estimate timing: rough approximation based on audio length
+        audio_duration = len(audio_array) / sample_rate
+        text_length = max(m["position"] for m in markers) if markers else 1
+
+        # Convert markers to audio segments
+        result_segments = []
+        last_end_time = 0.0
+
+        for marker in sorted(pause_markers, key=lambda x: x["position"]):
+            position = marker["position"]
+            duration = marker["duration"]
+
+            # Estimate time position based on text position
+            # This is a heuristic - assumes relatively constant speaking rate
+            time_position = (position / text_length) * audio_duration
+
+            # Extract audio before pause
+            if time_position > last_end_time:
+                start_samples = int(last_end_time * sample_rate)
+                end_samples = int(time_position * sample_rate)
+                if end_samples > start_samples:
+                    result_segments.append(audio_array[start_samples:end_samples])
+
+            # Add pause (silence)
+            silence_samples = int(duration * sample_rate)
+            result_segments.append(np.zeros(silence_samples, dtype=audio_array.dtype))
+
+            last_end_time = time_position
+
+        # Add remaining audio after last pause
+        final_start = int(last_end_time * sample_rate)
+        if final_start < len(audio_array):
+            result_segments.append(audio_array[final_start:])
+
+        # Concatenate all segments
+        if result_segments:
+            result_audio = np.concatenate(result_segments)
+            logger.info(f"Audio with pauses inserted: {len(audio_array)} → {len(result_audio)} samples (+{len(result_audio)-len(audio_array)})")
+            return result_audio
+
+    except Exception as e:
+        logger.warning(f"Failed to insert pauses into audio: {e}")
+        return audio_array
+
+    return audio_array
+
+
 class PerformanceMonitor:
     """Simple performance monitoring helper class."""
 

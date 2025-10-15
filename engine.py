@@ -815,11 +815,11 @@ def generate_speech(
         if text_to_chunk.strip():
             text_chunks.append(text_to_chunk)
 
-    # Apply speed/pause markers to generation if any were found
-    # For now, log the markers - future implementation will handle them in generation
+    # Future: Process speed/pause markers during generation
+    # This requires modifying model.generate to accept pause markers
+    # For now, markers are parsed but not yet applied during generation
     if markers:
-        logger.info(f"Found scripting markers: {markers}")
-        # For final solution, markers would be processed here to modify generation parameters per chunk
+        logger.info(f"Scripting markers detected ({len(markers)} total) - will be processed in future implementation")
 
     if not text_chunks:
         logger.warning("No text chunks to process after splitting.")
@@ -892,13 +892,6 @@ def generate_speech(
                 monitor.record(f"model.generate completed for chunk {i+1}")
 
                 if chunk_output_np is not None and chunk_output_np.size > 0:
-                    # Apply per-chunk rate/time-stretch if provided
-                    this_rate = per_chunk_rates[i] if (len(per_chunk_rates) > i) else speed_factor
-                    try:
-                        if this_rate != 1.0:
-                            chunk_output_np = time_stretch_audio(chunk_output_np, this_rate, EXPECTED_SAMPLE_RATE)
-                    except Exception as e:
-                        logger.warning(f"Time-stretch failed for chunk {i+1}: {e}")
                     all_audio_arrays.append(chunk_output_np)
                     chunk_duration = time.time() - chunk_start_time
                     logger.info(
@@ -909,25 +902,6 @@ def generate_speech(
                     # Reset model state after each chunk to free memory
                     if hasattr(dia_model, "reset_state"):
                         dia_model.reset_state()
-                else:
-                    logger.warning(
-                        f"model.generate() returned None or empty audio for chunk {i+1}. Skipping."
-                    )
-
-            except Exception as gen_exc:
-                logger.error(
-                    f"Error calling model.generate() for chunk {i+1}: {gen_exc}",
-                    exc_info=True,
-                )
-                # Clean up after generation error
-                if hasattr(dia_model, "reset_state"):
-                    dia_model.reset_state()
-                # Option: Stop processing further chunks on error, or just skip this one
-                # For robustness, let's skip and continue, but log the error.
-                # raise # Or re-raise to stop the whole process
-
-                # Progress logging per chunk end
-                logger.info(f"Engine: Completed chunk {chunk_progress_count}/{total_chunks}")
 
         # --- End of chunk loop ---
 
@@ -947,6 +921,12 @@ def generate_speech(
             # Clear array and force collection
             all_audio_arrays.clear()  # Remove references to chunk arrays
             torch.cuda.empty_cache()  # Clear CUDA cache
+
+        monitor.record("Paused-based post-processing started")
+
+        # --- Apply Pause Insertion ---
+        final_audio_np = insert_pauses_into_audio(final_audio_np, markers, EXPECTED_SAMPLE_RATE)
+        monitor.record("Paused-based post-processing complete")
 
     except Exception as e:
         logger.error(f"Error during simplified generation loop: {e}", exc_info=True)
