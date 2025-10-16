@@ -4,6 +4,27 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from typing import List
+from enum import Enum
+
+
+# --- Prosody Enums (NEW) ---
+class EmotionEnum(str, Enum):
+    """Supported emotions for prosody control."""
+    NEUTRAL = "neutral"
+    HAPPY = "happy"
+    SAD = "sad"
+    ANGRY = "angry"
+    SURPRISED = "surprised"
+    FEARFUL = "fearful"
+
+
+class SpeakingStyleEnum(str, Enum):
+    """Supported speaking styles."""
+    NORMAL = "normal"
+    FORMAL = "formal"
+    CASUAL = "casual"
+    WHISPER = "whisper"
+    SHOUTING = "shouting"
 
 # --- Request Models ---
 
@@ -114,6 +135,27 @@ class CustomTTSRequest(BaseModel):
         ge=100,  # Minimum reasonable chunk size
         le=1000,  # Maximum reasonable chunk size
         description="Approximate target character length for text chunks when splitting is enabled (100-1000).",
+    )
+    # NEW: Prosody/Emotion Parameters
+    emotion: Optional[EmotionEnum] = Field(
+        default=None,
+        description="Emotion to apply to the generated speech. Options: neutral, happy, sad, angry, surprised, fearful.",
+    )
+    speaking_style: Optional[SpeakingStyleEnum] = Field(
+        default=None,
+        description="Speaking style to apply. Options: normal, formal, casual, whisper, shouting.",
+    )
+    pitch_shift: Optional[float] = Field(
+        default=None,
+        ge=-12.0,  # Semitones
+        le=12.0,
+        description="Pitch shift in semitones (-12 to +12). Negative lowers pitch, positive raises it.",
+    )
+    energy_level: Optional[float] = Field(
+        default=None,
+        ge=0.5,
+        le=2.0,
+        description="Energy level multiplier (0.5 = quieter, 2.0 = louder). Affects dynamics and intensity.",
     )
 
 

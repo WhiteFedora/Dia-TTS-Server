@@ -6,14 +6,18 @@ model:
   config_filename: config.json
   weights_filename: dia-v0_1_bf16.safetensors
   whisper_model_name: small.en
+device:
+  prefer_gpu: true
+  memory_limit_mb: 8192
+  quantization: auto
 paths:
   model_cache: ./model_cache
   reference_audio: ./reference_audio
   output: ./outputs
   voices: ./voices
 generation_defaults:
-  speed_factor: 1.0
-  cfg_scale: 3.0
+  speed_factor: 1
+  cfg_scale: 3
   temperature: 1.3
   top_p: 0.95
   cfg_filter_top_k: 35
@@ -21,15 +25,10 @@ generation_defaults:
   split_text: true
   chunk_size: 120
 ui_state:
-  last_text: "[S1] Hello world, this is a test to vary (sighs) prosody and emotional\
-    \ arc, where the speaker can get slightly [EMO=excited] motivated to speak faster,\
-    \ but also and using distinct pauses room for the second speaker [S2] [EMO=interrupted]\
-    \ that's me [S1] (laughs) yeah, that is you, space to speak. [S2] [RATE=0.7] now\
-    \ that is done, it must be time for... a ... really... slow and ... intense ...\
-    \ piece of wordage.\r\n\r\n"
-  last_voice_mode: predefined
-  last_predefined_voice: Michael_Emily.wav
-  last_reference_file: null
+  last_text: '[S1] Hello world, this is a test to vary'
+  last_voice_mode: clone
+  last_predefined_voice: none
+  last_reference_file: What_Is_The_Scariest_Thing__snippet.mp3
   last_seed: 42
   last_chunk_size: 120
   last_split_text_enabled: true

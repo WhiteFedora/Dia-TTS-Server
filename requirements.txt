@@ -22,6 +22,7 @@ python-multipart # For file uploads
 requests # For health checks or other potential uses
 PyYAML # For parsing presets.yaml AND primary config.yaml
 tqdm
+psutil # For device and memory monitoring
 
 # Audio Post-processing
 pydub

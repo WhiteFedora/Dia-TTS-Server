@@ -5,11 +5,22 @@ import logging
 import time
 import os
 import torch
-import torchaudio  # Import torchaudio for loading/processing
 import numpy as np
 from typing import Optional, Tuple, List, Dict, Any  # Added Dict, Any
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm  # Import tqdm for progress bars
+
+# Try to import torchaudio (optional for voice cloning)
+try:
+    import torchaudio
+    TORCHAUDIO_AVAILABLE = True
+except ImportError:
+    TORCHAUDIO_AVAILABLE = False
+    logging.warning("torchaudio not available. Voice cloning features will be disabled.")
+
+# Import new device and memory management modules
+from device_manager import get_device_info, get_optimal_device, log_device_info
+from memory_optimizer import MemoryOptimizer
 
 # Import Dia model class and config from the NEW dia library structure
 try:
@@ -119,12 +130,34 @@ EXPECTED_SAMPLE_RATE = DEFAULT_SAMPLE_RATE
 
 def get_device() -> torch.device:
     """Determines the optimal torch device for this application.
-
-    Per project requirement: prioritize CPU-only usage (laptop with no GPU).
-    This enforces CPU device selection even if CUDA/MPS is available.
+    
+    Uses smart detection to:
+    - Detect Colab T4 GPU and use it for 10-50x speedup
+    - Fall back to CPU on local machines
+    - Use MPS on Apple Silicon if available
+    
+    Returns:
+        torch.device: The optimal device (cuda, mps, or cpu)
     """
-    logger.info("Forcing CPU device selection (CPU-only target environment).")
-    return torch.device("cpu")
+    global model_device
+    if model_device is not None:
+        return model_device
+    
+    device_info = get_device_info(prefer_gpu=True)
+    logger.info(f"Device Detection: {device_info.device_type} - {device_info.device_name}")
+    
+    if device_info.device_type == "cuda":
+        logger.info(f"Using CUDA device: {device_info.device_name} with {device_info.total_memory_mb:.0f}MB memory")
+        device = torch.device("cuda")
+    elif device_info.device_type == "mps":
+        logger.info(f"Using MPS device (Apple Silicon)")
+        device = torch.device("mps")
+    else:
+        logger.info(f"Using CPU device")
+        device = torch.device("cpu")
+    
+    model_device = device
+    return device
 
 
 def get_compute_dtype(device: torch.device, weights_filename: str) -> str:
@@ -238,6 +271,7 @@ def load_model():
     Loads the Dia TTS model and associated DAC model using the new Dia class methods.
     Downloads model files based on configuration if they don't exist locally.
     Handles both .pth and .safetensors formats via the underlying Dia class.
+    Integrates memory optimization for device-specific settings.
     """
     global dia_model, model_config_instance, model_device, MODEL_LOADED, EXPECTED_SAMPLE_RATE
 
@@ -251,6 +285,13 @@ def load_model():
     weights_filename = get_model_weights_filename()
     cache_path = get_model_cache_path()
     model_device = get_device()
+    
+    # Initialize memory optimizer for device-specific optimizations
+    memory_optimizer = MemoryOptimizer(model_device.type)
+    memory_config = memory_optimizer.get_recommended_config()
+    
+    logger.info(f"Memory Optimization Config: quantization={memory_config.quantization_method}, max_memory={memory_config.max_memory_allocation_mb}MB")
+    
     compute_dtype_str = get_compute_dtype(
         model_device, weights_filename
     )  # Determine compute dtype
@@ -262,6 +303,7 @@ def load_model():
     logger.info(f"  Cache Directory: {cache_path}")
     logger.info(f"  Target Device: {model_device}")
     logger.info(f"  Compute Dtype: {compute_dtype_str}")
+    logger.info(f"  Quantization: {memory_config.quantization_method}")
 
     # Ensure cache directory exists
     try:
@@ -339,6 +381,11 @@ def load_model():
         # Load DAC model (now handled within Dia class constructor or methods)
         logger.info("Loading associated DAC model...")
         dia_instance._load_dac_model()  # Call the internal method
+        
+        # Perform memory cleanup after loading
+        memory_optimizer.cleanup_memory()
+        
+        logger.info(f"Memory Usage: {memory_optimizer.get_memory_usage_mb()}")
 
         dia_model = dia_instance  # Assign to global variable
         model_config_instance = dia_model.config  # Store config if needed
@@ -408,6 +455,10 @@ def _prepare_cloning_inputs(
     if not os.path.isfile(reference_audio_path):
         return None, None, f"Reference audio file not found: {reference_audio_path}"
 
+    # --- Check if torchaudio is available ---
+    if not TORCHAUDIO_AVAILABLE:
+        return None, None, "torchaudio is not installed. Voice cloning requires torchaudio. Please install it with: pip install torchaudio"
+
     # --- 1. Load and Process Audio (CPU only) ---
     try:
         logger.info(f"Loading reference audio: {reference_audio_path}")
@@ -455,6 +506,7 @@ def _prepare_cloning_inputs(
 
         # Convert processed tensor to NumPy array (float32) for potential Whisper use
         processed_audio_np = audio_tensor.squeeze(0).numpy().astype(np.float32)
+
 
         # Clear tensors when done with them
         del audio_tensor
@@ -642,6 +694,11 @@ def generate_speech(
     seed: Optional[int] = None,
     split_text: bool = False,
     chunk_size: int = 120,
+    # Prosody parameters (NEW)
+    emotion: Optional[str] = None,
+    speaking_style: Optional[str] = None,
+    pitch_shift: Optional[float] = None,
+    energy_level: Optional[float] = None,
     # Post-processing parameters (applied after generation)
     enable_silence_trimming: bool = True,
     enable_internal_silence_fix: bool = True,
@@ -670,6 +727,11 @@ def generate_speech(
         import gc
 
         gc.collect()
+
+    # Initialize memory optimizer for generation
+    memory_optimizer = MemoryOptimizer(model_device.type)
+    memory_before = memory_optimizer.get_memory_usage_mb()
+    logger.info(f"Memory before generation: {memory_before}")
 
     monitor = PerformanceMonitor()
     monitor.record("Request received in engine (simple generate)")
@@ -724,6 +786,10 @@ def generate_speech(
         "speed": speed_factor,
         "clone_ref": clone_reference_filename if clone_reference_filename else "N/A",
         "transcript_provided": transcript is not None,
+        "emotion": emotion if emotion else "N/A",
+        "speaking_style": speaking_style if speaking_style else "N/A",
+        "pitch_shift": pitch_shift if pitch_shift else "N/A",
+        "energy_level": energy_level if energy_level else "N/A",
         "text_snippet": f"'{text_to_process[:80].replace(os.linesep, ' ')}...'",
     }
     logger.info(f"Generating speech (simple method) with params: {log_params}")
@@ -898,8 +964,10 @@ def generate_speech(
                     logger.info(
                         f"Chunk {i+1} generated successfully in {chunk_duration:.2f}s. Audio shape: {chunk_output_np.shape}"
                     )
-                    # Clear CUDA cache after each chunk
-                    torch.cuda.empty_cache()
+                    # Perform memory optimization after each chunk
+                    memory_optimizer.cleanup_memory()
+                    current_memory = memory_optimizer.get_memory_usage_mb()
+                    logger.info(f"Memory after chunk {i+1}: {current_memory}MB")
                     # Reset model state after each chunk to free memory
                     if hasattr(dia_model, "reset_state"):
                         dia_model.reset_state()

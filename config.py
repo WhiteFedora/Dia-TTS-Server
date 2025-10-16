@@ -33,6 +33,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "weights_filename": "dia-v0_1_bf16.safetensors",
         "whisper_model_name": "small.en",  # Added Whisper model here
     },
+    "device": {
+        "prefer_gpu": True,  # NEW: Automatically use GPU if available (Colab T4, local CUDA, etc.)
+        "memory_limit_mb": 8192,  # NEW: Max GPU memory to use (8GB default)
+        "quantization": "auto",  # NEW: "auto" (device-dependent), "int8", "int4", "float16", "float32"
+    },
     "paths": {
         "model_cache": "./model_cache",
         "reference_audio": "./reference_audio",
@@ -532,6 +537,28 @@ def get_model_weights_filename() -> str:
 def get_whisper_model_name() -> str:
     return config_manager.get(
         "model.whisper_model_name", _get_default("model.whisper_model_name")
+    )
+
+
+# Device Settings (NEW)
+def get_device_prefer_gpu() -> bool:
+    """Get whether to prefer GPU if available (Colab T4, local CUDA, etc.)"""
+    return config_manager.get_bool(
+        "device.prefer_gpu", _get_default("device.prefer_gpu")
+    )
+
+
+def get_device_memory_limit_mb() -> int:
+    """Get the maximum GPU memory to use in MB"""
+    return config_manager.get_int(
+        "device.memory_limit_mb", _get_default("device.memory_limit_mb")
+    )
+
+
+def get_device_quantization() -> str:
+    """Get quantization strategy: 'auto', 'int8', 'int4', 'float16', 'float32'"""
+    return config_manager.get(
+        "device.quantization", _get_default("device.quantization")
     )
 
 

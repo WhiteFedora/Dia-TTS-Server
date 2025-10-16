@@ -570,6 +570,16 @@ async def custom_tts_endpoint(request: CustomTTSRequest):
     monitor.record("Parameters processed")
 
     try:
+        # Log prosody parameters if provided
+        if request.emotion:
+            logger.info(f"Applying emotion: {request.emotion.value}")
+        if request.speaking_style:
+            logger.info(f"Applying speaking style: {request.speaking_style.value}")
+        if request.pitch_shift:
+            logger.info(f"Applying pitch shift: {request.pitch_shift} semitones")
+        if request.energy_level:
+            logger.info(f"Applying energy level: {request.energy_level}x")
+        
         # Call the core engine function with all parameters from the request
         result = generate_speech(
             text_to_process=request.text,
@@ -586,6 +596,11 @@ async def custom_tts_endpoint(request: CustomTTSRequest):
             seed=request.seed,
             split_text=request.split_text,
             chunk_size=request.chunk_size,
+            # Prosody parameters (NEW)
+            emotion=request.emotion.value if request.emotion else None,
+            speaking_style=request.speaking_style.value if request.speaking_style else None,
+            pitch_shift=request.pitch_shift,
+            energy_level=request.energy_level,
             # Use default post-processing settings
             enable_silence_trimming=True,
             enable_internal_silence_fix=True,
